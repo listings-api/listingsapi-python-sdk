@@ -198,6 +198,68 @@ def test_sync_page_auto_paging_iter():
     assert names == ["a", "b", "c"]
 
 
+def test_sync_page_next_page_none_when_cursor_missing():
+    """Without a cursor, `after` would be omitted and the API would return the
+    first page again, so paging must stop rather than silently restart."""
+    page = SyncPage(
+        data=[{"name": "a"}],
+        has_more=True,
+        end_cursor=None,
+        _fetch_next=lambda cursor: pytest.fail("must not refetch without a cursor"),
+    )
+    assert page.next_page() is None
+
+
+def test_sync_page_auto_paging_iter_stops_on_empty_page():
+    """An empty page ends the feed even if the API still claims has_more."""
+    empty = SyncPage(data=[], has_more=True, end_cursor=None)
+    page1 = SyncPage(
+        data=[{"name": "a"}],
+        has_more=True,
+        end_cursor="cursor1",
+        _fetch_next=lambda cursor: empty,
+    )
+    assert [item.name for item in page1.auto_paging_iter()] == ["a"]
+
+
+def test_auto_paging_iter_terminates_when_api_always_reports_has_more(client, monkeypatch):
+    """Regression: the reviews feed returns pageInfo.endCursor=null and
+    hasNextPage=true on every page, including the empty one past the last
+    record. Paging must still finish exactly once over the data."""
+    total = 12
+    page_size = 5
+    calls = []
+
+    def fake_location_get(location_id, path_suffix, params=None):
+        params = params or {}
+        assert len(calls) < 10, "auto_paging_iter did not terminate"
+        after = params.get("after")
+        start = int(after.split(":")[1]) if after else 0
+        rows = range(start + 1, min(start + page_size, total) + 1)
+        calls.append(len(rows))
+        return {
+            "data": {
+                "interactions": {
+                    "edges": [
+                        {"cursor": f"Interaction:{n}", "node": {"interactionId": f"r{n}"}}
+                        for n in rows
+                    ],
+                    "totalCount": total,
+                    # verbatim live shape: no usable cursor, has-next never false
+                    "pageInfo": {"hasNextPage": True, "endCursor": None},
+                }
+            }
+        }
+
+    monkeypatch.setattr(client, "_location_get", fake_location_get)
+
+    ids = [r.interactionId for r in client.reviews.list(1, first=page_size).auto_paging_iter()]
+
+    assert ids == [f"r{n}" for n in range(1, total + 1)]
+    assert len(ids) == len(set(ids)), "no record may be yielded twice"
+    assert calls == [5, 5, 2, 0]
+
+
 # --- Exceptions ---
 
 def test_exception_hierarchy():
@@ -388,7 +450,7 @@ def test_analytics_google(client):
 
 
 def test_version():
-    assert listingsapi.__version__ == "0.5.1"
+    assert listingsapi.__version__ == "0.5.2"
 
 
 # --- locations.add (one-call create with validation) ---

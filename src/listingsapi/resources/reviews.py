@@ -118,6 +118,7 @@ class Reviews(APIResource):
             data=items,
             has_more=page_info.get("hasNextPage", False),
             end_cursor=end_cursor,
+            total=result.get("totalCount"),
             _fetch_next=lambda cursor: self.list(
                 location_id,
                 first=first,

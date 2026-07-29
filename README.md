@@ -102,12 +102,18 @@ page = client.locations.list(first=50)
 for loc in page:
     print(loc.name)
 
+print(page.total)                      # total records matching the query
+
 if page.has_more:                      # manual paging
     next_page = page.next_page()
 
 for loc in page.auto_paging_iter():    # every record, all pages
     print(loc.name)
 ```
+
+`auto_paging_iter()` walks to the end of the result set and stops there, so it is
+safe to use on large histories. `client.reviews.list(...)` exposes `page.total`
+the same way, from the feed's `totalCount`.
 
 Responses are `APIObject`s: dot access (`loc.name`), dict access (`loc["stateIso"]`), and `loc.to_dict()` all work.
 

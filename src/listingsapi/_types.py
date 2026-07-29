@@ -117,8 +117,14 @@ class SyncPage:
         return f"SyncPage(items={len(self.data)}, has_more={self.has_more})"
 
     def next_page(self) -> SyncPage | None:
-        """Fetch the next page of results, or None if no more pages."""
-        if not self.has_more or not self._fetch_next:
+        """Fetch the next page of results, or None if there is no next page.
+
+        Returns None when there is no cursor to page from, not just when
+        has_more is False. Without a cursor the fetcher would omit `after`
+        entirely and the API would answer with the *first* page again, so
+        paging would silently restart instead of ending.
+        """
+        if not self.has_more or not self._fetch_next or self._end_cursor is None:
             return None
         return self._fetch_next(self._end_cursor)
 
@@ -132,6 +138,9 @@ class SyncPage:
         page: SyncPage | None = self
         while page is not None:
             yield from page.data
-            if not page.has_more:
+            # An empty page means the feed is exhausted. Treat that as
+            # authoritative: some endpoints keep reporting has_more=True
+            # past the final record, so has_more alone cannot terminate.
+            if not page.data or not page.has_more:
                 break
             page = page.next_page()
