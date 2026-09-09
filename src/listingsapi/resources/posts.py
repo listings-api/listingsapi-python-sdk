@@ -30,13 +30,14 @@ class Posts(APIResource):
     """
 
     def create(self, body: dict[str, Any]) -> APIObject:
-        """Create a post from a raw body dict (flat fields, not input-wrapped).
+        """Create a post from a raw field dict.
 
-        Required: postName, locationIds (base64), postType, postSites. Prefer
-        create_announcement / create_event / create_offer for keyword arguments
-        and client-side validation.
+        Pass the fields flat — they are wrapped in the ``input`` object the API
+        requires before sending. Required: postName, locationIds (base64),
+        postType, postSites. Prefer create_announcement / create_event /
+        create_offer for keyword arguments and client-side validation.
         """
-        data = self._post("posts", body)
+        data = self._post("posts", {"input": body})
         return APIObject(data.get("data", {}).get("createSocialPost") or {})
 
     def create_announcement(
@@ -232,8 +233,8 @@ class Posts(APIResource):
             context_info=context_info,
             additional_fields=additional_fields,
         )
-        data = self._post("bulk-posts", body)
-        return APIObject(data.get("data", {}).get("createBulkSocialPost") or {})
+        data = self._post("bulk-posts", {"input": body})
+        return APIObject(data.get("data", {}).get("createSocialPost") or {})
 
     def retrieve(self, post_id: str) -> APIObject:
         """Get a post with its content, per-site publish status, and analytics."""
@@ -258,13 +259,16 @@ class Posts(APIResource):
         """List post campaigns targeting a location.
 
         Offset-paginated: returns .records plus .pageInfo with totalPages,
-        totalRecords, hasNextPage. tag defaults to "all" (the API errors when
-        it is omitted).
+        totalRecords, hasNextPage.
+
+        Note: this route rejects a tag — the API errors when one is sent — so
+        ``tag`` is accepted for backwards compatibility and never put on the
+        wire. Use bulk_list_for_location when you need tag filtering.
         """
-        params = self._list_params(tag, page, per_page, filters, sort_fields)
+        params = self._list_params(None, page, per_page, filters, sort_fields)
         encoded = encode_location_id(location_id)
         data = self._get(f"locations/{encoded}/posts", params)
-        return APIObject(data.get("data", {}).get("rollupSocialPosts") or {})
+        return APIObject(data.get("data", {}).get("postsByLocation") or {})
 
     def bulk_retrieve(self, bulk_post_id: str) -> APIObject:
         """Get a bulk campaign with per-location publish status and analytics."""
@@ -293,7 +297,7 @@ class Posts(APIResource):
             sites=sites if sites is not None else ["GOOGLE"],
             **kwargs,
         )
-        data = self._post("posts", body)
+        data = self._post("posts", {"input": body})
         return APIObject(data.get("data", {}).get("createSocialPost") or {})
 
     def _build_post_body(
@@ -358,13 +362,15 @@ class Posts(APIResource):
 
     def _list_params(
         self,
-        tag: str,
+        tag: str | None,
         page: int | None,
         per_page: int | None,
         filters: dict[str, Any] | None,
         sort_fields: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"tag": tag}
+        params: dict[str, Any] = {}
+        if tag is not None:
+            params["tag"] = tag
         if page is not None:
             params["page"] = page
         if per_page is not None:

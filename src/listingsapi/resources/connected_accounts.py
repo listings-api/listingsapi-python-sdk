@@ -147,7 +147,7 @@ class ConnectedAccounts(APIResource):
                 }
             },
         )
-        return APIObject(data.get("data", {}).get("connectUrl") or {})
+        return APIObject(data.get("data", {}).get("createConnectUrl") or {})
 
     def oauth_disconnect(self, location_id: str | int, site: str) -> APIObject:
         """Disconnect a Google/Facebook profile from a single location."""

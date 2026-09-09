@@ -44,7 +44,7 @@ class Photos(APIResource):
         """Star or unstar photos. Max 4 starred photos per account."""
         data = self._post(
             "locations/photos/star",
-            {"input": {"locationId": encode_location_id(location_id), "mediaIds": media_ids, "starred": starred}},
+            {"input": {"locationId": encode_location_id(location_id), "photoIds": media_ids, "starred": starred}},
         )
         return APIObject(data.get("data", {}).get("starUnstarLocationPhotos") or {})
 

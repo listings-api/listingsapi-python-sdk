@@ -450,7 +450,7 @@ def test_analytics_google(client):
 
 
 def test_version():
-    assert listingsapi.__version__ == "0.5.2"
+    assert listingsapi.__version__ == "0.5.3"
 
 
 # --- locations.add (one-call create with validation) ---
@@ -658,7 +658,7 @@ CREATE_POST_OK = {
 }
 BULK_POST_OK = {
     "data": {
-        "createBulkSocialPost": {
+        "createSocialPost": {
             "success": True,
             "errors": [],
             "socialPost": {"id": "QnVsa1Bvc3Q6OTk=", "status": "INPROGRESS"},
@@ -667,7 +667,7 @@ BULK_POST_OK = {
 }
 
 
-def test_posts_create_announcement_builds_flat_body(client):
+def test_posts_create_announcement_wraps_body_in_input(client):
     with requests_mock.Mocker() as m:
         m.post("https://listingsapi.com/api/v4/posts", json=CREATE_POST_OK)
         result = client.posts.create_announcement(
@@ -680,8 +680,9 @@ def test_posts_create_announcement_builds_flat_body(client):
             media_url="https://cdn.example.com/opening.jpg",
         )
         assert result.success is True
-        sent = m.last_request.json()
-        assert "input" not in sent
+        envelope = m.last_request.json()
+        assert list(envelope) == ["input"]
+        sent = envelope["input"]
         assert sent["postName"] == "Grand Opening"
         assert sent["postType"] == "ANNOUNCEMENT"
         assert sent["postSites"] == ["GOOGLE"]
@@ -689,6 +690,34 @@ def test_posts_create_announcement_builds_flat_body(client):
         assert sent["postMessage"] == [{"site": "GOOGLE", "message": "We are now open!"}]
         assert sent["postCta"] == [{"site": "GOOGLE", "type": "LEARN_MORE", "url": "https://example.com/opening"}]
         assert sent["postMediaUrl"] == [{"site": "GOOGLE", "url": "https://cdn.example.com/opening.jpg", "type": "IMAGE"}]
+
+
+def test_posts_create_raw_body_is_input_wrapped(client):
+    with requests_mock.Mocker() as m:
+        m.post("https://listingsapi.com/api/v4/posts", json=CREATE_POST_OK)
+        result = client.posts.create({
+            "postName": "Raw",
+            "locationIds": ["TG9jYXRpb246MTY4MDg="],
+            "postType": "ANNOUNCEMENT",
+            "postSites": ["GOOGLE"],
+        })
+        assert result.success is True
+        envelope = m.last_request.json()
+        assert list(envelope) == ["input"]
+        assert envelope["input"]["postName"] == "Raw"
+
+
+def test_posts_bulk_publish_wraps_body_in_input(client):
+    with requests_mock.Mocker() as m:
+        m.post("https://listingsapi.com/api/v4/bulk-posts", json=BULK_POST_OK)
+        result = client.posts.bulk_publish(
+            name="Holiday hours", location_ids=[16808], message="Open late!",
+        )
+        # reads createSocialPost, not createBulkSocialPost
+        assert result.socialPost.id == "QnVsa1Bvc3Q6OTk="
+        envelope = m.last_request.json()
+        assert list(envelope) == ["input"]
+        assert envelope["input"]["postName"] == "Holiday hours"
 
 
 def test_posts_bulk_publish_defaults_to_google_and_facebook(client):
@@ -700,7 +729,7 @@ def test_posts_bulk_publish_defaults_to_google_and_facebook(client):
             message="Open late through the holidays!",
         )
         assert result.success is True
-        sent = m.last_request.json()
+        sent = m.last_request.json()["input"]
         assert sent["postSites"] == ["GOOGLE", "FACEBOOK"]
         assert len(sent["postMessage"]) == 2
         assert {e["site"] for e in sent["postMessage"]} == {"GOOGLE", "FACEBOOK"}
@@ -715,7 +744,7 @@ def test_posts_bulk_publish_per_site_messages(client):
             location_ids=[16808],
             message={"GOOGLE": "New summer menu!", "FACEBOOK": "Swing by for the summer menu."},
         )
-        sent = m.last_request.json()
+        sent = m.last_request.json()["input"]
         by_site = {e["site"]: e["message"] for e in sent["postMessage"]}
         assert by_site["GOOGLE"] == "New summer menu!"
         assert by_site["FACEBOOK"] == "Swing by for the summer menu."
@@ -767,7 +796,7 @@ def test_posts_create_event_context(client):
             start_time="7:00pm",
             end_time="10:00pm",
         )
-        sent = m.last_request.json()
+        sent = m.last_request.json()["input"]
         assert sent["postType"] == "EVENT"
         assert sent["postContextInfo"] == {
             "title": "Jazz Night", "startDay": "2026-08-01", "endDay": "2026-08-01",
@@ -789,7 +818,7 @@ def test_posts_create_offer_context(client):
             start_day="2026-08-01",
             end_day="2026-08-07",
         )
-        sent = m.last_request.json()
+        sent = m.last_request.json()["input"]
         assert sent["postType"] == "OFFER"
         assert sent["postContextInfo"]["couponCode"] == "SUMMER20"
         assert sent["postContextInfo"]["title"] == "Summer Sale"
@@ -808,15 +837,33 @@ def test_posts_retrieve_and_bulk_retrieve(client):
         assert bulk.socialPostId == "QnVsa1Bvc3Q6OTk="
 
 
-def test_posts_list_for_location_defaults_tag_all(client):
-    response = {"data": {"rollupSocialPosts": {"records": [{"id": "p1"}], "pageInfo": {"totalPages": 1, "totalRecords": 1, "hasNextPage": False}}}}
+def test_posts_list_for_location_sends_no_tag_and_reads_posts_by_location(client):
+    response = {"data": {"postsByLocation": {"records": [{"id": "p1"}], "pageInfo": {"totalPages": 1, "totalRecords": 1, "hasNextPage": False}}}}
     with requests_mock.Mocker() as m:
         m.get("https://listingsapi.com/api/v4/locations/TG9jYXRpb246MTY4MDg=/posts", json=response)
         result = client.posts.list_for_location(16808, page=1, per_page=10)
         assert result.records[0].id == "p1"
         assert result.pageInfo.totalRecords == 1
-        assert m.last_request.qs["tag"] == ["all"]
+        # the route raises when a tag is supplied, so none is sent
+        assert "tag" not in m.last_request.qs
         assert m.last_request.qs["page"] == ["1"]
+
+
+def test_posts_list_for_location_ignores_tag_argument(client):
+    response = {"data": {"postsByLocation": {"records": []}}}
+    with requests_mock.Mocker() as m:
+        m.get("https://listingsapi.com/api/v4/locations/TG9jYXRpb246MTY4MDg=/posts", json=response)
+        client.posts.list_for_location(16808, tag="all")
+        assert "tag" not in m.last_request.qs
+
+
+def test_posts_bulk_list_for_location_still_sends_tag(client):
+    response = {"data": {"rollupSocialPosts": {"records": [{"id": "b1"}]}}}
+    with requests_mock.Mocker() as m:
+        m.get("https://listingsapi.com/api/v4/locations/TG9jYXRpb246MTY4MDg=/bulk-posts", json=response)
+        result = client.posts.bulk_list_for_location(16808)
+        assert result.records[0].id == "b1"
+        assert m.last_request.qs["tag"] == ["all"]
 
 
 def test_posts_delete(client):
@@ -828,7 +875,7 @@ def test_posts_delete(client):
 
 
 def test_posts_bulk_publish_api_failure_raises(client):
-    body = {"data": {"createBulkSocialPost": {"success": False, "errors": [{"code": "SY20001", "message": "Image URL unreachable"}]}}}
+    body = {"data": {"createSocialPost": {"success": False, "errors": [{"code": "SY20001", "message": "Image URL unreachable"}]}}}
     with requests_mock.Mocker() as m:
         m.post("https://listingsapi.com/api/v4/bulk-posts", json=body)
         with pytest.raises(ValidationError) as exc:
@@ -955,3 +1002,31 @@ def test_post_without_key_sends_no_idempotency_header(client):
         m.post("https://listingsapi.com/api/v4/locations", json={"data": {}})
         client._post("locations", {"input": {"name": "Acme"}})
         assert "Idempotency-Key" not in m.last_request.headers
+
+
+# --- Wire-shape fixes swept in 0.5.3 ---
+
+def test_photos_star_sends_photo_ids(client):
+    response = {"data": {"starUnstarLocationPhotos": {"success": True}}}
+    with requests_mock.Mocker() as m:
+        m.post("https://listingsapi.com/api/v4/locations/photos/star", json=response)
+        result = client.photos.star(16808, ["TWVkaWFGaWxlOjE="])
+        assert result.success is True
+        sent = m.last_request.json()["input"]
+        assert sent["photoIds"] == ["TWVkaWFGaWxlOjE="]
+        assert "mediaIds" not in sent
+        assert sent["starred"] is True
+        assert sent["locationId"] == "TG9jYXRpb246MTY4MDg="
+
+
+def test_connected_accounts_oauth_url_reads_create_connect_url(client):
+    response = {"data": {"createConnectUrl": {"url": "https://oauth.example/x", "success": True}}}
+    with requests_mock.Mocker() as m:
+        m.post("https://listingsapi.com/api/v4/locations/oauth_connect_url", json=response)
+        result = client.connected_accounts.oauth_url(
+            16808, "google", "https://ok.example", "https://err.example"
+        )
+        assert result.url == "https://oauth.example/x"
+        sent = m.last_request.json()["input"]
+        assert sent["locationId"] == "TG9jYXRpb246MTY4MDg="
+        assert sent["site"] == "GOOGLE"
