@@ -191,8 +191,10 @@ class Locations(APIResource):
             city: City. Required for countries with city-level addressing; may be
                 omitted only for service-area businesses with hide_address=True.
             street: Street address.
-            state_iso: State/region ISO code.
-            postal_code: Postal or ZIP code.
+            state_iso: State/region ISO code. Required when the country's
+                ``stateRequired`` is true (see ``client.countries()``).
+            postal_code: Postal or ZIP code. Send it when the country's
+                ``hasPostalCode`` is true.
             phone: Primary phone number, validated for the country.
             website: Business website URL.
             store_id: Your unique store code; must be unique across the account.

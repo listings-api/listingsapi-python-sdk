@@ -303,7 +303,7 @@ client.connected_accounts.oauth_disconnect(16808, "FACEBOOK")
 
 ```python
 sites = client.plan_sites()          # directories included in your plan
-countries = client.countries()       # supported countries and states
+countries = client.countries()       # supported countries, states, and address rules
 subcategories = client.subcategories()  # business categories (IDs for locations.add)
 subs = client.subscriptions()        # active subscriptions
 ```
@@ -337,7 +337,7 @@ print(f"Score: {audit.health_score}%, Issues: {audit.issue_count}")
 | Method | Description |
 |--------|-------------|
 | `client.plan_sites()` | Directories included in your plan |
-| `client.countries()` | Supported countries and states (ISO codes) |
+| `client.countries()` | Supported countries and states (ISO codes), with `hasCity`, `stateRequired` and `hasPostalCode` for each country |
 | `client.subcategories()` | Business categories (IDs for `locations.add`) |
 | `client.subscriptions()` | Active subscriptions for the account |
 

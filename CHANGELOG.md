@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.4
+
+### Added
+
+- **Country address rules are documented.** `client.countries()` returns
+  `hasCity`, `stateRequired` and `hasPostalCode` for each country. Use them to
+  decide which address fields to pass to `locations.add()`: `state_iso` when
+  `stateRequired` is true, and `postal_code` when `hasPostalCode` is true.
+
 ## 0.5.3
 
 Fixes for request bodies and response keys that did not match the API.

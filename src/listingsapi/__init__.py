@@ -23,7 +23,7 @@ from listingsapi.exceptions import (
     ValidationError,
 )
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
 
 __all__ = [
     # Client

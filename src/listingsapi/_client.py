@@ -263,7 +263,11 @@ class ListingsAPI:
         return [APIObject(item) for item in items]
 
     def countries(self) -> list[APIObject]:
-        """Get supported countries and states (ISO codes)."""
+        """Get supported countries and states (ISO codes).
+
+        Each country has ``hasCity``, ``stateRequired`` and ``hasPostalCode``,
+        which tell you which address fields a location in that country needs.
+        """
         data = self._get("countries")
         items = data.get("data", {}).get("supportedCountries") or []
         return [APIObject(item) for item in items]
